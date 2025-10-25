@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+
+import boto3
+import yaml
+import json
+
+def main():
+    # Leer configuración YAML
+    with open("config.yml", "r") as f:
+        config = yaml.safe_load(f)
+
+    general = config.get("general", {})
+    lb = general.get("loadbalancer", {})
+
+    # Leer Template JSON
+    with open("cdn.json", "r") as f:
+        template_body = f.read()
+
+    # Crear cliente CloudFormation
+    cfn = boto3.client("cloudformation", region_name="us-east-1")
+
+    # Definir parámetros
+    parameters = [
+        {"ParameterKey": "StackName", "ParameterValue": general["StackName"]},
+        {"ParameterKey": "LoadBalancerCNAME", "ParameterValue": lb["LoadBalancerCNAME"]}
+    ]
+
+    nombre = general["StackName"]+"-cdn"
+
+    # Crear el stack en AWS
+    try:
+        response = cfn.create_stack(
+            StackName=nombre,
+            TemplateBody=template_body,
+            Parameters=parameters,
+            Capabilities=["CAPABILITY_IAM"],
+            OnFailure="ROLLBACK"
+        )
+
+        print(f"Stack en creación: {response['StackId']}")
+    except Exception as e:
+        print(f"Error al crear el stack: {e}")
+
+
+if __name__ == "__main__":
+    main()

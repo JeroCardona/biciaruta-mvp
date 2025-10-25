@@ -1,0 +1,208 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Stack de Sistemas de Alto Desempenyo",
+    "Parameters": {
+        "StackName": {
+            "Description": "Stack Name",
+            "Type": "String",
+            "MinLength": "1",
+            "MaxLength": "60"
+        },
+        "MinEC2": {
+            "Description": "Numero minimo de instancias",
+            "Type": "Number"
+        },
+        "MaxEC2": {
+            "Description": "Numero maximo de instancias",
+            "Type": "Number"
+        },
+        "DesiredEC2": {
+            "Description": "Numero deseado de instancias",
+            "Type": "Number"
+        },
+        "RootPassword": {
+            "Description": "Contrasenya para el admin de la BD",
+            "Type": "String",
+            "NoEcho": "True"
+        }
+    },
+    "Resources": {
+        "VPC": {
+        "Type": "AWS::EC2::VPC",
+        "Properties": {
+            "CidrBlock": "10.0.0.0/16",
+            "EnableDnsSupport": true,
+            "EnableDnsHostnames": true,
+            "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "${StackName}-vpc" } }]
+        }
+        },
+        "InternetGateway": { "Type": "AWS::EC2::InternetGateway" },
+        "GatewayAttachment": {
+            "Type": "AWS::EC2::VPCGatewayAttachment",
+            "Properties": {
+                "VpcId": { "Ref": "VPC" },
+                "InternetGatewayId": { "Ref": "InternetGateway" }
+            }
+        },
+        "RouteTable": {
+            "Type": "AWS::EC2::RouteTable",
+            "Properties": {
+                "VpcId": { "Ref": "VPC" }
+            }
+        },
+        "PublicRoute": {
+            "Type": "AWS::EC2::Route",
+            "DependsOn": "GatewayAttachment",
+            "Properties": {
+                "RouteTableId": { "Ref": "RouteTable" },
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": { "Ref": "InternetGateway" }
+            }
+        },
+        "Subnet1": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": { "Ref": "VPC" },
+                "CidrBlock": "10.0.1.0/24",
+                "AvailabilityZone": { "Fn::Select": [0, { "Fn::GetAZs": "" }] },
+                "MapPublicIpOnLaunch": true,
+                "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "${StackName}-subnet1" } }]
+            }
+        },
+        "Subnet2": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": { "Ref": "VPC" },
+                "CidrBlock": "10.0.2.0/24",
+                "AvailabilityZone": { "Fn::Select": [1, { "Fn::GetAZs": "" }] },
+                "MapPublicIpOnLaunch": true,
+                "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "${StackName}-subnet2" } }]
+            }
+        },
+        "Subnet1RouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": { "Ref": "Subnet1" },
+                "RouteTableId": { "Ref": "RouteTable" }
+            }
+        },
+        "Subnet2RouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": { "Ref": "Subnet2" },
+                "RouteTableId": { "Ref": "RouteTable" }
+            }
+        },
+        "SecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "VpcId": { "Ref": "VPC" },
+                "GroupDescription": "Permitir HTTP, SSH y MySQL",
+                "SecurityGroupIngress": [
+                    { "IpProtocol": "tcp", "FromPort": 22, "ToPort": 22, "CidrIp": "0.0.0.0/0" },
+                    { "IpProtocol": "tcp", "FromPort": 80, "ToPort": 80, "CidrIp": "0.0.0.0/0" },
+                    { "IpProtocol": "tcp", "FromPort": 5432, "ToPort": 5432, "CidrIp": "0.0.0.0/0" },
+                    { "IpProtocol": "tcp", "FromPort": 3306, "ToPort": 3306, "CidrIp": "0.0.0.0/0" }
+                ]
+            }
+        },
+        "LaunchTemplate": {
+            "Type": "AWS::EC2::LaunchTemplate",
+            "Properties": {
+                "LaunchTemplateData": {
+                    "ImageId": "ami-0360c520857e3138f",
+                    "InstanceType": "t3.micro",
+                    "KeyName": { "Ref": "StackName" },
+                    "SecurityGroupIds": [{ "Ref": "SecurityGroup" }],
+                    "UserData": {
+                        "Fn::Base64": "#!/bin/bash\napt update -y\nsudo su\nsnap install docker\nsleep 10\ncd /home/ubuntu\ngit clone https://github.com/JeroCardona/biciaruta-mvp.git\ncat > /home/ubuntu/biciaruta-mvp/deploy/.env << 'EOF'\nDB_USER=postgres\nDB_PASSWORD=postgres\nDB_NAME=biciaruta\nDB_PORT=5432\nEOF\ncd /home/ubuntu/biciaruta-mvp/deploy\ndocker compose build\ndocker compose up -d"
+                    }
+                }
+            }
+        },
+        "LoadBalancer": {
+            "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+            "Properties": {
+                "Subnets": [{ "Ref": "Subnet1" }, { "Ref": "Subnet2" }],
+                "SecurityGroups": [{ "Ref": "SecurityGroup" }],
+                "Scheme": "internet-facing"
+            }
+        },
+        "TargetGroup": {
+            "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "Properties": {
+                "VpcId": { "Ref": "VPC" },
+                "Port": 80,
+                "Protocol": "HTTP",
+                "TargetType": "instance",
+                "HealthCheckPath": "/"
+            }
+        },
+        "Listener": {
+            "Type": "AWS::ElasticLoadBalancingV2::Listener",
+            "Properties": {
+                "LoadBalancerArn": { "Ref": "LoadBalancer" },
+                "Port": 80,
+                "Protocol": "HTTP",
+                "DefaultActions": [
+                    { "Type": "forward", "TargetGroupArn": { "Ref": "TargetGroup" } }
+                ]
+            }
+        },
+        "AutoScalingGroup": {
+            "Type": "AWS::AutoScaling::AutoScalingGroup",
+            "Properties": {
+                "VPCZoneIdentifier": [{ "Ref": "Subnet1" }, { "Ref": "Subnet2" }],
+                "LaunchTemplate": {
+                    "LaunchTemplateId": { "Ref": "LaunchTemplate" },
+                    "Version": { "Fn::GetAtt": ["LaunchTemplate", "LatestVersionNumber"] }
+                },
+                "MinSize": { "Ref": "MinEC2" },
+                "MaxSize": { "Ref": "MaxEC2" },
+                "DesiredCapacity": { "Ref": "DesiredEC2" },
+                "TargetGroupARNs": [{ "Ref": "TargetGroup" }]
+            }
+        },
+        "S3Bucket": {
+            "Type": "AWS::S3::Bucket",
+            "Properties": {
+                "BucketName": { "Fn::Sub": "${StackName}-bucket" }
+            }
+        },
+        "DBSubnetGroup": {
+            "Type": "AWS::RDS::DBSubnetGroup",
+            "Properties": {
+                "DBSubnetGroupDescription": "Subnets para la base de datos",
+                "SubnetIds": [{ "Ref": "Subnet1" }, { "Ref": "Subnet2" }]
+            }
+        },
+        "DBInstance": {
+            "Type": "AWS::RDS::DBInstance",
+            "Properties": {
+                "AllocatedStorage": "20",
+                "DBInstanceClass": "db.t3.micro",
+                "Engine": "mysql",
+                "MasterUsername": "root",
+                "MasterUserPassword": { "Ref": "RootPassword" },
+                "DBName": "SistemasAD",
+                "PubliclyAccessible": true,
+                "DBSubnetGroupName": { "Ref": "DBSubnetGroup" },
+                "VPCSecurityGroups": [{ "Ref": "SecurityGroup" }]
+            }
+        }
+    },
+    "Outputs": {
+        "LoadBalancerDNS": {
+        "Description": "DNS del Load Balancer",
+        "Value": { "Fn::GetAtt": ["LoadBalancer", "DNSName"] }
+        },
+        "S3BucketName": {
+        "Description": "Nombre del bucket S3",
+        "Value": { "Ref": "S3Bucket" }
+        },
+        "DBEndpoint": {
+        "Description": "Endpoint de la base de datos",
+        "Value": { "Fn::GetAtt": ["DBInstance", "Endpoint.Address"] }
+        }
+    }
+}

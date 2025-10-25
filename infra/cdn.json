@@ -1,0 +1,65 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "CDN de Sistemas de Alto Desempenyo",
+
+    "Parameters": {
+        "StackName": {
+            "Description": "Stack Name",
+            "Type": "String",
+            "MinLength": "1",
+            "MaxLength": "60"
+        },
+        "LoadBalancerCNAME": {
+            "Description": "CNAME del balanceador de cargas",
+            "Type": "String"
+        }
+    },
+    "Resources": {
+        "CloudFrontDistribution": {
+            "Type": "AWS::CloudFront::Distribution",
+            "Properties": {
+                "DistributionConfig": {
+                    "Origins": [
+                        {
+                            "Id": { "Fn::Sub": "${StackName}-origin-lb" },
+                            "DomainName": { "Ref": "LoadBalancerCNAME" },
+                            "CustomOriginConfig": {
+                                "HTTPPort": 80,
+                                "HTTPSPort": 443,
+                                "OriginProtocolPolicy": "http-only",
+                                "OriginSSLProtocols": ["TLSv1.1","TLSv1.2"]
+                            }
+                        }
+                    ],
+                    "Enabled": true,
+                    "Comment": { "Fn::Sub": "CDN para ${StackName} con ALB" },
+                    "DefaultCacheBehavior": {
+                        "TargetOriginId": { "Fn::Sub": "${StackName}-origin-lb" },
+                        "ViewerProtocolPolicy": "allow-all",
+                        "AllowedMethods": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+                        "CachedMethods": ["GET", "HEAD", "OPTIONS"],
+                        "ForwardedValues": {
+                            "QueryString": true,
+                            "Headers": ["Host", "Origin", "Accept", "Accept-Language"],
+                            "Cookies": { "Forward": "all" }
+                        },
+                        "Compress": true,
+                        "MinTTL": 0,
+                        "DefaultTTL": 300,
+                        "MaxTTL": 3600
+                    },
+                    "PriceClass": "PriceClass_100",
+                    "ViewerCertificate": {
+                        "CloudFrontDefaultCertificate": true
+                    }
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "CloudFrontDistribution": {
+        "Description": "Dominio de CloudFront",
+        "Value": { "Fn::GetAtt": ["CloudFrontDistribution", "DomainName"] }
+        }
+    }
+}

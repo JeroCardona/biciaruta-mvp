@@ -1,0 +1,9 @@
+general:
+  StackName: CHANGE_ME # Nombre del Stack
+  MinEC2: 2 # Numero minimo de instancias
+  MaxEC2: 3 # Numero maximo de instancias
+  DesiredEC2: 2 # Numero deseado de instancias
+  mysql:
+    RootPassword: CHANGE_ME # Constraseña de la Base de Datos
+  loadbalancer:
+    LoadBalancerCNAME: CHANGE_ME # DNS del balanceador de cargas
