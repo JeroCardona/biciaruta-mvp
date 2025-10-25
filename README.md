@@ -1,34 +1,26 @@
-\# BiciRuta — MVP
+## BiciRuta — MVP
+
+### Flujo mínimo:
+
+**1\) POST /reports  → crear incidente (lat, lon, type, note)**
+
+**2\) GET /reports/near?lat=\&lon=\&radius=  → listar cercanos**
 
 
 
-Flujo mínimo:
+### Infraestructura / Despliegue:
+La infraestructura desplegada corresponde a un entorno escalable, balanceado y contenerizado implementado en AWS, utilizando CloudFormation como herramienta de automatización (IaC).
 
-1\) POST /reports  → crear incidente (lat, lon, type, note)
+**Componentes principales**
+* Amazon EC2 Auto Scaling: administra las instancias de aplicación.
+* Load Balancer: distribuye el tráfico entre las instancias EC2 del grupo del Auto Scaling.
+* Amazon RDS: base de datos.
+* Amazon S3: se implementó para almacenamiento de archivos estáticos, respaldos y/o registros del sistema.
+* CloudFront: permite reducir la latencia entre la aplicacion y el usuario.
 
-2\) GET /reports/near?lat=\&lon=\&radius=  → listar cercanos
+Para conocer el despliegue de la infraestructura, ver el README.md en la ruta infra/.
 
-
-
-Estructura:
-
-\- infra/           # Terraform (EC2/SG/ALB más adelante)
-
-\- api/             # Backend Node.js/Express
-
-\- db/              # init.sql con tabla e índices
-
-\- web/             # Front estático (Leaflet)
-
-\- reverse-proxy/   # Nginx balanceando api1 y api2
-
-\- deploy/          # docker-compose y .env
-
-\- tests/           # k6 scripts
-
-
-
-SLOs del MVP:
+### SLOs del MVP:
 
 \- p95 < 500 ms en GET /reports/near
 
